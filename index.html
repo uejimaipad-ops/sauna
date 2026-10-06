@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="サウナ受付">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#40E0D0">
+<title>サウナ チェックイン</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<style>
+  :root{
+    --bg:#40E0D0;          /* ターコイズブルー(全体背景) */
+    --bg-deep:#1fb8a8;
+    --bg-soft:#7ff0e4;
+    --ink:#04403b;
+    --card:#7ff0e4;
+    --accent:#0b7f77;
+    --warn:#c2410c;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif}
+  .wrap{max-width:900px;margin:0 auto;padding:20px 20px 40px}
+  h1{margin:0 0 4px;font-size:28px}
+  .sub{margin:0 0 16px;font-size:15px;opacity:.8}
+
+  /* モード選択ボタン */
+  .modes{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+  .mode{border:4px solid var(--accent);background:var(--bg-soft);color:var(--ink);
+    border-radius:20px;padding:22px 10px;font-size:28px;font-weight:800;cursor:pointer;
+    transition:.15s}
+  .mode small{display:block;font-size:14px;font-weight:600;margin-top:4px;opacity:.8}
+  .mode.active{background:var(--accent);color:#fff;transform:scale(1.02);
+    box-shadow:0 6px 16px rgba(4,64,59,.35)}
+
+  /* カメラ */
+  .cam{position:relative;background:#000;border-radius:20px;overflow:hidden;
+    aspect-ratio:4/3;border:4px solid var(--accent)}
+  video{width:100%;height:100%;object-fit:cover}
+  video.mirror{transform:scaleX(-1)}
+  .frame{position:absolute;inset:18% 25%;border:4px solid #fff;border-radius:18px;
+    box-shadow:0 0 0 999px rgba(0,0,0,.35);pointer-events:none}
+  .badge{position:absolute;left:12px;top:12px;background:var(--accent);color:#fff;
+    padding:6px 14px;border-radius:999px;font-weight:700}
+  .camtools{display:flex;gap:10px;margin:10px 0 16px}
+  button.tool{flex:1;padding:12px;border-radius:12px;border:2px solid var(--accent);
+    background:var(--bg-soft);color:var(--ink);font-size:16px;font-weight:700}
+  #msg{min-height:24px;font-weight:700;margin-bottom:14px}
+
+  /* 利用中リスト */
+  .card{background:var(--card);border-radius:20px;padding:16px 18px;margin-bottom:16px}
+  .card h2{margin:0 0 10px;font-size:20px}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid #1fb8a8;font-size:16px}
+  .empty{opacity:.7;padding:6px 0}
+  .manual{display:flex;gap:8px}
+  .manual input{flex:1;padding:12px;border-radius:12px;border:2px solid var(--accent);font-size:16px}
+
+  /* 料金モーダル */
+  .overlay{position:fixed;inset:0;background:rgba(4,64,59,.6);display:none;
+    align-items:center;justify-content:center;padding:20px;z-index:10}
+  .overlay.show{display:flex}
+  .modal{background:var(--card);border-radius:28px;padding:28px;width:100%;max-width:560px;text-align:center}
+  .modal h3{margin:0;font-size:22px}
+  .price{font-size:64px;font-weight:900;margin:10px 0;color:var(--accent)}
+  .detail{font-size:17px;line-height:1.8;text-align:left;background:#c9faf4;border-radius:14px;padding:12px 16px}
+  .big{margin-top:18px;width:100%;padding:18px;border:none;border-radius:16px;
+    background:var(--accent);color:#fff;font-size:22px;font-weight:800}
+  .link{background:none;border:none;color:var(--ink);text-decoration:underline;margin-top:12px;font-size:14px}
+
+  /* タブ(最下部・目立たない表示) */
+  .tabs{display:flex;justify-content:center;gap:24px;margin:60px 0 0;opacity:.35}
+  .tab{padding:6px 10px;border:none;background:transparent;color:var(--ink);
+    font-size:12px;font-weight:600}
+  .tab.active{text-decoration:underline}
+
+  /* 集計 */
+  .filters{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
+  .filters select,.filters input{padding:12px;border-radius:12px;border:2px solid var(--accent);
+    font-size:16px;background:#c9faf4;color:var(--ink)}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+  .kpi{background:var(--card);border-radius:16px;padding:12px;text-align:center}
+  .kpi b{display:block;font-size:26px;margin-top:4px;color:var(--accent)}
+  .kpi span{font-size:13px}
+  .scroll{max-height:320px;overflow:auto}
+  td.num,th.num{text-align:right}
+  .bars{display:flex;align-items:flex-end;gap:4px;height:130px;padding-top:8px}
+  .bar{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;font-size:12px}
+  .bar i{display:block;width:100%;background:var(--accent);border-radius:6px 6px 0 0;min-height:2px}
+  .mini{padding:6px 12px;border-radius:10px;border:2px solid var(--accent);background:var(--bg-soft);
+    color:var(--ink);font-weight:700;font-size:14px}
+  .danger{border-color:var(--warn);color:var(--warn)}
+  @media (max-width:600px){.kpis{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span id="titleIcon">♨️</span> チェックイン</h1>
+  <div id="viewScan">
+  <p class="sub">①利用メニューを選ぶ → ②お客様のQRコードをカメラにかざす(2回目のスキャンで会計)</p>
+
+  <div class="modes">
+    <button class="mode active" id="m-sauna" data-mode="sauna">サウナ<small>平日1時間 ¥1,600〜</small></button>
+    <button class="mode" id="m-lounge" data-mode="lounge">LOUNGE<small>1時間 ¥1,200〜</small></button>
+  </div>
+
+  <div class="cam">
+    <video id="video" playsinline muted></video>
+    <div class="frame"></div>
+    <div class="badge" id="badge">サウナ</div>
+  </div>
+  <div class="camtools">
+    <button class="tool" id="flip">カメラ切替(前/背面)</button>
+    <button class="tool" id="restart">カメラ再起動</button>
+  </div>
+  <div id="msg"></div>
+
+  <div class="card">
+    <h2>利用中のお客様 <span id="count"></span></h2>
+    <div id="list"></div>
+  </div>
+
+  <div class="card">
+    <h2>手動入力(QRが読めない時)</h2>
+    <div class="manual">
+      <input id="manual" inputmode="numeric" placeholder="タグ番号 例: 7">
+      <button class="tool" style="flex:0 0 140px" id="manualGo">実行</button>
+    </div>
+  </div>
+  </div><!-- /viewScan -->
+
+  <div id="viewStats" hidden>
+    <div class="filters">
+      <select id="period">
+        <option value="today">今日</option>
+        <option value="week">今週(月〜日)</option>
+        <option value="month">今月</option>
+        <option value="all">全期間</option>
+        <option value="custom">期間を指定</option>
+      </select>
+      <span id="customBox" hidden>
+        <input type="date" id="dFrom"> 〜 <input type="date" id="dTo">
+      </span>
+      <button class="mini" id="csvBtn">CSV出力</button>
+    </div>
+    <div class="kpis" id="kpis"></div>
+    <div class="card"><h2>メニュー別</h2><div id="byMenu"></div></div>
+    <div class="card"><h2>日別</h2><div class="scroll" id="byDay"></div></div>
+    <div class="card"><h2>時間帯別の入店数</h2><div id="byHour"></div></div>
+    <div class="card"><h2>最近の会計(直近20件)</h2><div class="scroll" id="recent"></div></div>
+    <div class="card"><button class="mini danger" id="wipe">全履歴を削除</button>
+      <div style="font-size:13px;margin-top:8px">データはこのiPadのSafari内に保存されています。定期的にCSV出力でバックアップしてください。</div></div>
+  </div>
+  <div class="tabs tabs-bottom">
+    <button class="tab active" id="tabScan">受付</button>
+    <button class="tab" id="tabStats">集計</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h3 id="ovTitle"></h3>
+    <div class="price" id="ovPrice"></div>
+    <div class="detail" id="ovDetail"></div>
+    <button class="big" id="ovClose">閉じる</button>
+  </div>
+</div>
+
+<canvas id="canvas" hidden></canvas>
+
+<script>
+/* ===================== 料金設定 ===================== */
+const PRICE = {
+  sauna: {
+    weekday: { p60:1600, p90:1900, p120:2200, ext:300 },   // 延長15分ごと
+    holiday: { p60:1800, p90:2100, p120:2400, ext:400 }
+  },
+  lounge: { base:1200, ext:600 }                           // 1時間以降30分ごと
+};
+
+/* 祝日(日本)。必要に応じて追記してください */
+const HOLIDAYS = new Set([
+ "2026-01-01","2026-01-12","2026-02-11","2026-02-23","2026-03-20","2026-04-29",
+ "2026-05-03","2026-05-04","2026-05-05","2026-05-06","2026-07-20","2026-08-11",
+ "2026-09-21","2026-09-22","2026-09-23","2026-10-12","2026-11-03","2026-11-23",
+ "2027-01-01","2027-01-11","2027-02-11","2027-02-23","2027-03-21","2027-03-22",
+ "2027-04-29","2027-05-03","2027-05-04","2027-05-05","2027-07-19","2027-08-11",
+ "2027-09-20","2027-09-23","2027-10-11","2027-11-03","2027-11-23"
+]);
+
+const MIN = 60000;
+const yen = n => "¥" + n.toLocaleString("ja-JP");
+const ymd = d => d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const isHoliday = d => d.getDay()===0 || d.getDay()===6 || HOLIDAYS.has(ymd(d));
+const fmtTime = d => d.toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});
+
+/* 料金計算(ms=利用時間、start=入店日時) */
+function calcFee(mode, ms, start){
+  const mins = Math.max(ms,0)/MIN;
+  if(mode==="lounge"){
+    const r = PRICE.lounge;
+    if(mins<=60) return {fee:r.base, plan:"LOUNGE 1時間", ext:0, dayType:"平日・土日祝共通"};
+    const ext = Math.ceil((mins-60)/30);
+    return {fee:r.base+ext*r.ext, plan:"LOUNGE 1時間", ext, extUnit:"30分", extPrice:r.ext, base:r.base, dayType:"平日・土日祝共通"};
+  }
+  const hol = isHoliday(start);
+  const r = hol ? PRICE.sauna.holiday : PRICE.sauna.weekday;
+  const dayType = hol ? "土日祝料金" : "平日料金";
+  if(mins<=60)  return {fee:r.p60,  plan:"サウナ 1時間",   ext:0, dayType};
+  if(mins<=90)  return {fee:r.p90,  plan:"サウナ 1.5時間", ext:0, dayType};
+  if(mins<=120) return {fee:r.p120, plan:"サウナ 2時間",   ext:0, dayType};
+  const ext = Math.ceil((mins-120)/15);
+  return {fee:r.p120+ext*r.ext, plan:"サウナ 2時間", ext, extUnit:"15分", extPrice:r.ext, base:r.p120, dayType};
+}
+
+/* ===================== 状態 ===================== */
+const KEY="sauna_sessions_v1";
+let sessions = {};
+try{ sessions = JSON.parse(localStorage.getItem(KEY)||"{}"); }catch(e){}
+const save = () => { try{ localStorage.setItem(KEY, JSON.stringify(sessions)); }catch(e){} };
+
+const HKEY="sauna_history_v1";
+let history = [];
+try{ history = JSON.parse(localStorage.getItem(HKEY)||"[]"); }catch(e){}
+const saveH = () => { try{ localStorage.setItem(HKEY, JSON.stringify(history)); }catch(e){} };
+
+let mode="sauna";
+const MODE_LABEL={sauna:"サウナ",lounge:"LOUNGE"};
+const MODE_ICON={sauna:"♨️",lounge:"📖"};
+const $ = id => document.getElementById(id);
+
+document.querySelectorAll(".mode").forEach(b=>b.onclick=()=>{
+  mode=b.dataset.mode;
+  document.querySelectorAll(".mode").forEach(x=>x.classList.toggle("active",x===b));
+  $("badge").textContent=MODE_LABEL[mode];
+  $("titleIcon").textContent=MODE_ICON[mode];
+});
+
+function say(t,bad){ const m=$("msg"); m.textContent=t; m.style.color=bad?"var(--warn)":"var(--ink)"; }
+
+/* ===================== チェックイン/会計 ===================== */
+function handleTag(raw){
+  const m = /^SAUNA-TAG-(\d+)$/.exec(raw.trim());
+  if(!m){ say("このQRコードは当店のものではありません",true); return; }
+  const id = String(parseInt(m[1],10));
+  const now = new Date();
+  const s = sessions[id];
+  if(!s){
+    sessions[id]={start:now.getTime(), mode};
+    save(); render();
+    say(`タグ${id}番:${MODE_LABEL[mode]}でチェックインしました(${fmtTime(now)})`);
+    showOverlay(`チェックイン完了`, "No."+id,
+      `<div>メニュー:<b>${MODE_LABEL[mode]}</b></div><div>入店:<b>${fmtTime(now)}</b></div><div>退店時にもう一度QRをスキャンしてください</div>`, true);
+  }else{
+    const start=new Date(s.start);
+    const ms=now.getTime()-s.start;
+    const r=calcFee(s.mode, ms, start);
+    const used=Math.ceil(ms/MIN);
+    let rows=`<div>メニュー:<b>${MODE_LABEL[s.mode]}</b>(${r.dayType})</div>
+      <div>入店:<b>${fmtTime(start)}</b> → 退店:<b>${fmtTime(now)}</b></div>
+      <div>利用時間:<b>${Math.floor(used/60)}時間${used%60}分</b></div>
+      <div>${r.plan}:<b>${yen(r.ext?r.base:r.fee)}</b></div>`;
+    if(r.ext) rows+=`<div>延長 ${r.ext}回(${r.extUnit}×${r.ext}):<b>${yen(r.ext*r.extPrice)}</b></div>`;
+    showOverlay(`会計 タグ${id}番`, yen(r.fee), rows, false);
+    history.push({id, mode:s.mode, start:s.start, end:now.getTime(), min:used, fee:r.fee,
+      ext:r.ext||0, day:(s.mode==="sauna"?(isHoliday(start)?"holiday":"weekday"):"all")});
+    saveH();
+    delete sessions[id]; save(); render();
+    say(`タグ${id}番:会計 ${yen(r.fee)}`);
+  }
+}
+
+function showOverlay(title,price,html,isIn){
+  $("ovTitle").textContent=title; $("ovPrice").textContent=price; $("ovDetail").innerHTML=html;
+  $("ovClose").textContent=isIn?"OK":"会計完了(閉じる)";
+  $("overlay").classList.add("show");
+  if(isIn) setTimeout(()=>$("overlay").classList.remove("show"),3500);
+}
+$("ovClose").onclick=()=>$("overlay").classList.remove("show");
+
+function render(){
+  const ids=Object.keys(sessions).sort((a,b)=>sessions[a].start-sessions[b].start);
+  $("count").textContent=ids.length?`(${ids.length}名)`:"";
+  if(!ids.length){ $("list").innerHTML='<div class="empty">現在利用中のお客様はいません</div>'; return; }
+  const now=Date.now();
+  $("list").innerHTML="<table><tr><th>タグ</th><th>メニュー</th><th>入店</th><th>経過</th><th>現在料金</th><th></th></tr>"+
+    ids.map(id=>{
+      const s=sessions[id], ms=now-s.start, el=Math.floor(ms/MIN);
+      const r=calcFee(s.mode,ms,new Date(s.start));
+      return `<tr><td>${id}</td><td>${MODE_LABEL[s.mode]}</td><td>${fmtTime(new Date(s.start))}</td><td>${Math.floor(el/60)}:${String(el%60).padStart(2,"0")}</td><td>${yen(r.fee)}</td><td><button class="mini danger" onclick="cancelSess('${id}')">取消</button></td></tr>`;
+    }).join("")+"</table>";
+}
+function cancelSess(id){
+  if(confirm(`タグ${id}番のチェックインを、会計せずに取り消しますか?`)){ delete sessions[id]; save(); render(); }
+}
+setInterval(render,15000); render();
+
+$("manualGo").onclick=()=>{ const v=$("manual").value.trim(); if(/^\d+$/.test(v)){ handleTag("SAUNA-TAG-"+v); $("manual").value=""; } };
+
+/* ===================== カメラ & QR読み取り ===================== */
+const video=$("video"), canvas=$("canvas"), ctx=canvas.getContext("2d",{willReadFrequently:true});
+let stream=null, facing="user", last={code:"",t:0};
+
+async function startCam(){
+  stopCam();
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:1280},height:{ideal:960}},audio:false});
+    video.srcObject=stream; await video.play();
+    video.classList.toggle("mirror",facing==="user");
+    say("QRコードをカメラにかざしてください");
+    requestAnimationFrame(tick);
+  }catch(e){
+    say("カメラを起動できません。Safariの設定でカメラを許可し、HTTPSで開いてください。",true);
+  }
+}
+function stopCam(){ if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } }
+function tick(){
+  if(!stream) return;
+  if(video.readyState===video.HAVE_ENOUGH_DATA && view==="scan" && !$("overlay").classList.contains("show")){
+    const w=video.videoWidth,h=video.videoHeight;
+    canvas.width=w; canvas.height=h;
+    ctx.drawImage(video,0,0,w,h);
+    const code=jsQR(ctx.getImageData(0,0,w,h).data,w,h,{inversionAttempts:"dontInvert"});
+    if(code && code.data){
+      const now=Date.now();
+      if(code.data!==last.code || now-last.t>4000){
+        last={code:code.data,t:now};
+        handleTag(code.data);
+      }
+    }
+  }
+  requestAnimationFrame(tick);
+}
+$("flip").onclick=()=>{ facing=facing==="user"?"environment":"user"; startCam(); };
+$("restart").onclick=startCam;
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden && view==="scan") startCam(); });
+
+/* ===================== 集計 ===================== */
+let view="scan";
+function setView(v){
+  view=v;
+  $("viewScan").hidden = v!=="scan";
+  $("viewStats").hidden = v!=="stats";
+  $("tabScan").classList.toggle("active",v==="scan");
+  $("tabStats").classList.toggle("active",v==="stats");
+  if(v==="stats"){ stopCam(); renderStats(); } else { startCam(); }
+}
+$("tabScan").onclick=()=>setView("scan");
+$("tabStats").onclick=()=>setView("stats");
+$("period").onchange=()=>{ $("customBox").hidden=$("period").value!=="custom"; renderStats(); };
+$("dFrom").onchange=$("dTo").onchange=renderStats;
+
+function periodRange(){
+  const p=$("period").value, now=new Date(), d0=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  if(p==="today") return [d0.getTime(), d0.getTime()+86400000];
+  if(p==="week"){ const st=new Date(d0); st.setDate(d0.getDate()-((d0.getDay()+6)%7)); const en=new Date(st); en.setDate(st.getDate()+7); return [st.getTime(),en.getTime()]; }
+  if(p==="month") return [new Date(now.getFullYear(),now.getMonth(),1).getTime(), new Date(now.getFullYear(),now.getMonth()+1,1).getTime()];
+  if(p==="custom"){
+    const f=$("dFrom").value, t=$("dTo").value;
+    return [f?new Date(f+"T00:00:00").getTime():0, t?new Date(t+"T00:00:00").getTime()+86400000:8.64e15];
+  }
+  return [0,8.64e15];
+}
+const inRange = () => { const [a,b]=periodRange(); return history.filter(r=>r.end>=a && r.end<b); };
+const sum = (l,k) => l.reduce((t,r)=>t+r[k],0);
+const fmtMin = m => Math.floor(m/60)+"時間"+String(Math.round(m%60)).padStart(2,"0")+"分";
+const fmtDT = ms => { const d=new Date(ms); return (d.getMonth()+1)+"/"+d.getDate()+" "+fmtTime(d); };
+
+function renderStats(){
+  const L=inRange(), n=L.length, sales=sum(L,"fee");
+  $("kpis").innerHTML=[
+    ["売上合計",yen(sales)],["利用組数",n+"組"],
+    ["客単価",n?yen(Math.round(sales/n)):"-"],["平均滞在",n?fmtMin(sum(L,"min")/n):"-"]
+  ].map(([a,b])=>`<div class="kpi"><span>${a}</span><b>${b}</b></div>`).join("");
+
+  const groups=[
+    ["サウナ(平日)",r=>r.mode==="sauna"&&r.day==="weekday"],
+    ["サウナ(土日祝)",r=>r.mode==="sauna"&&r.day==="holiday"],
+    ["LOUNGE",r=>r.mode==="lounge"]
+  ];
+  $("byMenu").innerHTML="<table><tr><th>メニュー</th><th class='num'>組数</th><th class='num'>売上</th><th class='num'>延長回数</th><th class='num'>平均滞在</th></tr>"+
+    groups.map(([name,f])=>{ const g=L.filter(f), c=g.length;
+      return `<tr><td>${name}</td><td class="num">${c}</td><td class="num">${yen(sum(g,"fee"))}</td><td class="num">${sum(g,"ext")}</td><td class="num">${c?fmtMin(sum(g,"min")/c):"-"}</td></tr>`; }).join("")+
+    `<tr><th>合計</th><th class="num">${n}</th><th class="num">${yen(sales)}</th><th class="num">${sum(L,"ext")}</th><th></th></tr></table>`;
+
+  const days={};
+  L.forEach(r=>{ const k=ymd(new Date(r.end)); (days[k]=days[k]||{s:0,l:0,fee:0}); days[k][r.mode==="sauna"?"s":"l"]++; days[k].fee+=r.fee; });
+  const dk=Object.keys(days).sort().reverse();
+  const wd=["日","月","火","水","木","金","土"];
+  $("byDay").innerHTML= dk.length ? "<table><tr><th>日付</th><th class='num'>サウナ</th><th class='num'>LOUNGE</th><th class='num'>売上</th></tr>"+
+    dk.map(k=>{ const d=days[k]; return `<tr><td>${k.slice(5).replace("-","/")}(${wd[new Date(k+"T00:00:00").getDay()]})</td><td class="num">${d.s}</td><td class="num">${d.l}</td><td class="num">${yen(d.fee)}</td></tr>`; }).join("")+"</table>"
+    : '<div class="empty">データがありません</div>';
+
+  const hrs=Array(24).fill(0); L.forEach(r=>hrs[new Date(r.start).getHours()]++);
+  const used=hrs.map((v,h)=>v?h:-1).filter(h=>h>=0);
+  if(!used.length){ $("byHour").innerHTML='<div class="empty">データがありません</div>'; }
+  else{
+    const a=used[0], b=used[used.length-1], mx=Math.max(...hrs);
+    let h="";
+    for(let i=a;i<=b;i++) h+=`<div class="bar">${hrs[i]||""}<i style="height:${hrs[i]/mx*100}%"></i>${i}時</div>`;
+    $("byHour").innerHTML=`<div class="bars">${h}</div>`;
+  }
+
+  const rec=history.map((r,i)=>[r,i]).sort((x,y)=>y[0].end-x[0].end).slice(0,20);
+  $("recent").innerHTML= rec.length ? "<table><tr><th>退店</th><th>タグ</th><th>メニュー</th><th class='num'>利用</th><th class='num'>料金</th><th></th></tr>"+
+    rec.map(([r,i])=>`<tr><td>${fmtDT(r.end)}</td><td>${r.id}</td><td>${MODE_LABEL[r.mode]}</td><td class="num">${fmtMin(r.min)}</td><td class="num">${yen(r.fee)}</td><td><button class="mini danger" onclick="delRec(${i})">削除</button></td></tr>`).join("")+"</table>"
+    : '<div class="empty">会計データがありません</div>';
+}
+function delRec(i){
+  const r=history[i]; if(!r) return;
+  if(confirm(`${fmtDT(r.end)} タグ${r.id}番 ${yen(r.fee)} の記録を削除しますか?`)){ history.splice(i,1); saveH(); renderStats(); }
+}
+$("wipe").onclick=()=>{
+  if(confirm("全ての会計履歴を削除します。元に戻せません。よろしいですか?") && confirm("本当に削除しますか?")){ history=[]; saveH(); renderStats(); }
+};
+
+/* CSV出力(表示中の期間) */
+$("csvBtn").onclick=()=>{
+  const L=inRange().sort((a,b)=>a.end-b.end);
+  const f=ms=>{ const d=new Date(ms); return ymd(d)+" "+fmtTime(d); };
+  const rows=[["タグ","メニュー","区分","入店","退店","利用分","延長回数","料金"]].concat(
+    L.map(r=>[r.id,MODE_LABEL[r.mode],r.day==="holiday"?"土日祝":(r.day==="weekday"?"平日":"共通"),f(r.start),f(r.end),r.min,r.ext,r.fee]));
+  const csv="\uFEFF"+rows.map(r=>r.join(",")).join("\r\n");
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+  a.download="sauna_"+ymd(new Date()).replace(/-/g,"")+".csv";
+  document.body.appendChild(a); a.click(); a.remove();
+};
+
+startCam();
+</script>
+</body>
+</html>
