@@ -25,6 +25,10 @@
     font-family:-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif}
   .wrap{max-width:900px;margin:0 auto;padding:20px 20px 40px}
   h1{margin:0 0 4px;font-size:28px}
+  .head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+  .clock{text-align:right;line-height:1.1;flex:none}
+  .clock small{display:block;font-size:14px;font-weight:700;opacity:.75}
+  .clock b{font-size:34px;font-weight:700;letter-spacing:.04em;font-variant-numeric:tabular-nums}
   .sub{margin:0 0 16px;font-size:15px;opacity:.8}
 
   /* モード選択ボタン */
@@ -41,8 +45,11 @@
     aspect-ratio:4/3;border:4px solid var(--accent)}
   video{width:100%;height:100%;object-fit:cover}
   video.mirror{transform:scaleX(-1)}
-  .frame{position:absolute;inset:18% 25%;border:4px solid #fff;border-radius:18px;
+  .frame.ok{border-color:#22c55e}
+  .frame.ng{border-color:#ef4444}
+  .frame{transition:border-color .1s;position:absolute;inset:18% 25%;border:4px solid #fff;border-radius:18px;
     box-shadow:0 0 0 999px rgba(0,0,0,.35);pointer-events:none}
+  .badge.right{left:auto;right:12px}
   .badge{position:absolute;left:12px;top:12px;background:var(--accent);color:#fff;
     padding:6px 14px;border-radius:999px;font-weight:700}
   .camtools{display:flex;gap:10px;margin:10px 0 16px}
@@ -66,6 +73,9 @@
   .modal{background:var(--card);border-radius:28px;padding:28px;width:100%;max-width:560px;text-align:center}
   .modal h3{margin:0;font-size:22px}
   .price{font-size:64px;font-weight:900;margin:10px 0;color:var(--accent)}
+  .usedtime{margin:0 0 14px;line-height:1.2}
+  .usedtime small{display:block;font-size:15px;font-weight:700;opacity:.75}
+  .usedtime b{font-size:44px;font-weight:700;color:var(--ink);letter-spacing:.04em;font-variant-numeric:tabular-nums}
   .detail{font-size:17px;line-height:1.8;text-align:left;background:#c9faf4;border-radius:14px;padding:12px 16px}
   .big{margin-top:18px;width:100%;padding:18px;border:none;border-radius:16px;
     background:var(--accent);color:#fff;font-size:22px;font-weight:800}
@@ -93,12 +103,16 @@
   .mini{padding:6px 12px;border-radius:10px;border:2px solid var(--accent);background:var(--bg-soft);
     color:var(--ink);font-weight:700;font-size:14px}
   .danger{border-color:var(--warn);color:var(--warn)}
+  .tap{padding:12px 18px;min-height:44px;font-size:16px;touch-action:manipulation}
   @media (max-width:600px){.kpis{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1><span id="titleIcon">♨️</span> チェックイン</h1>
+  <div class="head">
+    <h1><span id="titleIcon">♨️</span> チェックイン</h1>
+    <div class="clock" aria-label="現在時刻"><small id="clkDate"></small><b id="clkTime">--:--:--</b></div>
+  </div>
   <div id="viewScan">
   <p class="sub">①利用メニューを選ぶ → ②お客様のQRコードをカメラにかざす(2回目のスキャンで会計)</p>
 
@@ -119,16 +133,16 @@
   <div id="msg"></div>
 
   <div class="card">
-    <h2>利用中のお客様 <span id="count"></span></h2>
-    <div id="list"></div>
-  </div>
-
-  <div class="card">
     <h2>手動入力(QRが読めない時)</h2>
     <div class="manual">
       <input id="manual" inputmode="numeric" placeholder="タグ番号 例: 7">
       <button class="tool" style="flex:0 0 140px" id="manualGo">実行</button>
     </div>
+  </div>
+
+  <div class="card">
+    <h2>利用中のお客様 <span id="count"></span></h2>
+    <div id="list"></div>
   </div>
   </div><!-- /viewScan -->
 
@@ -164,12 +178,23 @@
   <div class="modal">
     <h3 id="ovTitle"></h3>
     <div class="price" id="ovPrice"></div>
+    <div class="usedtime" id="ovUsed" hidden></div>
     <div class="detail" id="ovDetail"></div>
     <button class="big" id="ovClose">閉じる</button>
   </div>
 </div>
 
-<canvas id="canvas" hidden></canvas>
+<div class="overlay" id="cfOverlay" style="z-index:20">
+  <div class="modal">
+    <h3 id="cfMsg" style="line-height:1.5"></h3>
+    <div style="display:flex;gap:12px;margin-top:20px">
+      <button class="big" id="cfNo" style="flex:1;width:auto;margin:0;background:var(--bg-soft);color:var(--ink);border:3px solid var(--accent)">やめる</button>
+      <button class="big" id="cfOk" style="flex:1;width:auto;margin:0;background:var(--warn)">はい</button>
+    </div>
+  </div>
+</div>
+
+
 
 <script>
 /* ===================== 料金設定 ===================== */
@@ -236,45 +261,88 @@ document.querySelectorAll(".mode").forEach(b=>b.onclick=()=>{
   mode=b.dataset.mode;
   document.querySelectorAll(".mode").forEach(x=>x.classList.toggle("active",x===b));
   $("badge").textContent=MODE_LABEL[mode];
+  $("badge").classList.toggle("right",mode==="lounge");
   $("titleIcon").textContent=MODE_ICON[mode];
 });
+
+/* 効果音(Web Audio) */
+let actx=null;
+function unlockAudio(){
+  try{
+    if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)();
+    if(actx.state==="suspended") actx.resume();
+  }catch(e){}
+}
+["touchstart","pointerdown","click"].forEach(ev=>document.addEventListener(ev,unlockAudio,{passive:true}));
+function beep(freqs,dur){
+  dur=dur||0.12;
+  try{
+    unlockAudio(); if(!actx) return;
+    const t=actx.currentTime;
+    freqs.forEach((f,i)=>{
+      const o=actx.createOscillator(), g=actx.createGain(), st=t+i*dur;
+      o.type="sine"; o.frequency.value=f;
+      g.gain.setValueAtTime(0.0001,st);
+      g.gain.exponentialRampToValueAtTime(0.5,st+0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001,st+dur);
+      o.connect(g); g.connect(actx.destination);
+      o.start(st); o.stop(st+dur+0.02);
+    });
+  }catch(e){}
+}
+const SND={checkin:[988,1319], checkout:[1319,988,1319], error:[220,220]};
+
+/* 確認ウィンドウ(ブラウザ標準のconfirmは環境により出ないため自作) */
+function askConfirm(msg,okLabel){
+  return new Promise(res=>{
+    $("cfMsg").textContent=msg;
+    $("cfOk").textContent=okLabel||"はい";
+    $("cfOverlay").classList.add("show");
+    const done=v=>{ $("cfOverlay").classList.remove("show"); $("cfOk").onclick=null; $("cfNo").onclick=null; res(v); };
+    $("cfOk").onclick=()=>done(true);
+    $("cfNo").onclick=()=>done(false);
+  });
+}
 
 function say(t,bad){ const m=$("msg"); m.textContent=t; m.style.color=bad?"var(--warn)":"var(--ink)"; }
 
 /* ===================== チェックイン/会計 ===================== */
-function handleTag(raw){
-  const m = /^SAUNA-TAG-(\d+)$/.exec(raw.trim());
-  if(!m){ say("このQRコードは当店のものではありません",true); return; }
+function handleTag(raw,fromScan){
+  const m = /^SAUNA-(?:TAG-)?(\d+)$/.exec(raw.trim());
+  if(!m){ beep(SND.error); say("このQRコードは当店のものではありません",true); return; }
   const id = String(parseInt(m[1],10));
   const now = new Date();
   const s = sessions[id];
   if(!s){
     sessions[id]={start:now.getTime(), mode};
-    save(); render();
+    save(); render(); beep(SND.checkin);
     say(`タグ${id}番:${MODE_LABEL[mode]}でチェックインしました(${fmtTime(now)})`);
     showOverlay(`チェックイン完了`, "No."+id,
       `<div>メニュー:<b>${MODE_LABEL[mode]}</b></div><div>入店:<b>${fmtTime(now)}</b></div><div>退店時にもう一度QRをスキャンしてください</div>`, true);
   }else{
+    if(fromScan && now.getTime()-s.start<8000){
+      say(`タグ${id}番はチェックインしたばかりです(会計する場合は少し待ってからかざしてください)`,true); return;
+    }
     const start=new Date(s.start);
     const ms=now.getTime()-s.start;
     const r=calcFee(s.mode, ms, start);
     const used=Math.ceil(ms/MIN);
     let rows=`<div>メニュー:<b>${MODE_LABEL[s.mode]}</b>(${r.dayType})</div>
       <div>入店:<b>${fmtTime(start)}</b> → 退店:<b>${fmtTime(now)}</b></div>
-      <div>利用時間:<b>${Math.floor(used/60)}時間${used%60}分</b></div>
       <div>${r.plan}:<b>${yen(r.ext?r.base:r.fee)}</b></div>`;
     if(r.ext) rows+=`<div>延長 ${r.ext}回(${r.extUnit}×${r.ext}):<b>${yen(r.ext*r.extPrice)}</b></div>`;
-    showOverlay(`会計 タグ${id}番`, yen(r.fee), rows, false);
+    showOverlay(`会計 タグ${id}番`, yen(r.fee), rows, false, `${String(Math.floor(used/60)).padStart(2,"0")}:${String(used%60).padStart(2,"0")}`);
     history.push({id, mode:s.mode, start:s.start, end:now.getTime(), min:used, fee:r.fee,
       ext:r.ext||0, day:(s.mode==="sauna"?(isHoliday(start)?"holiday":"weekday"):"all")});
-    saveH();
+    saveH(); beep(SND.checkout);
     delete sessions[id]; save(); render();
     say(`タグ${id}番:会計 ${yen(r.fee)}`);
   }
 }
 
-function showOverlay(title,price,html,isIn){
+function showOverlay(title,price,html,isIn,used){
   $("ovTitle").textContent=title; $("ovPrice").textContent=price; $("ovDetail").innerHTML=html;
+  $("ovUsed").hidden=!used; $("ovUsed").innerHTML=used?`<small>利用時間</small><b>${used}</b>`:"";
   $("ovClose").textContent=isIn?"OK":"会計完了(閉じる)";
   $("overlay").classList.add("show");
   if(isIn) setTimeout(()=>$("overlay").classList.remove("show"),3500);
@@ -290,49 +358,108 @@ function render(){
     ids.map(id=>{
       const s=sessions[id], ms=now-s.start, el=Math.floor(ms/MIN);
       const r=calcFee(s.mode,ms,new Date(s.start));
-      return `<tr><td>${id}</td><td>${MODE_LABEL[s.mode]}</td><td>${fmtTime(new Date(s.start))}</td><td>${Math.floor(el/60)}:${String(el%60).padStart(2,"0")}</td><td>${yen(r.fee)}</td><td><button class="mini danger" onclick="cancelSess('${id}')">取消</button></td></tr>`;
+      return `<tr><td>${id}</td><td>${MODE_LABEL[s.mode]}</td><td>${fmtTime(new Date(s.start))}</td><td>${Math.floor(el/60)}:${String(el%60).padStart(2,"0")}</td><td>${yen(r.fee)}</td><td><button class="mini danger tap" data-cancel="${id}">取消</button></td></tr>`;
     }).join("")+"</table>";
 }
-function cancelSess(id){
-  if(confirm(`タグ${id}番のチェックインを、会計せずに取り消しますか?`)){ delete sessions[id]; save(); render(); }
+async function cancelSess(id){
+  if(!sessions[id]) return;
+  const ok=await askConfirm(`タグ${id}番のチェックインを、会計せずに取り消しますか?(売上には入りません)`,"取り消す");
+  if(ok){ delete sessions[id]; save(); render(); say(`タグ${id}番のチェックインを取り消しました`); }
 }
+$("list").addEventListener("click",e=>{
+  const b=e.target.closest&&e.target.closest("[data-cancel]");
+  if(b) cancelSess(b.dataset.cancel);
+});
 setInterval(render,15000); render();
 
 $("manualGo").onclick=()=>{ const v=$("manual").value.trim(); if(/^\d+$/.test(v)){ handleTag("SAUNA-TAG-"+v); $("manual").value=""; } };
 
 /* ===================== カメラ & QR読み取り ===================== */
-const video=$("video"), canvas=$("canvas"), ctx=canvas.getContext("2d",{willReadFrequently:true});
-let stream=null, facing="user", last={code:"",t:0};
+const video=$("video");
+const small=document.createElement("canvas"), sctx=small.getContext("2d",{willReadFrequently:true});
+let stream=null, facing="user", loopId=0;
+const seen={code:"",at:0};
+
+/* 読み取り部品(jsQR)の読み込み: 3か所のCDN + 端末への保存(オフライン対策) */
+const JSQR_URLS=["https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js",
+  "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js","https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"];
+const JSQR_KEY="jsqr_src_v1";
+async function ensureJsQR(){
+  if(typeof jsQR!=="undefined"){
+    try{ if(!localStorage.getItem(JSQR_KEY)){ const r=await fetch(JSQR_URLS[0]); if(r.ok) localStorage.setItem(JSQR_KEY,await r.text()); } }catch(e){}
+    return true;
+  }
+  try{ const c=localStorage.getItem(JSQR_KEY); if(c){ (0,eval)(c); if(typeof jsQR!=="undefined") return true; } }catch(e){}
+  for(const u of JSQR_URLS){
+    try{
+      const r=await fetch(u); if(!r.ok) continue;
+      const t=await r.text(); (0,eval)(t);
+      if(typeof jsQR!=="undefined"){ try{ localStorage.setItem(JSQR_KEY,t); }catch(e){} return true; }
+    }catch(e){}
+  }
+  return false;
+}
+ensureJsQR().then(ok=>{ if(!ok) say("QR読み取り部品を読み込めません。Wi-Fiにつないで、アプリを開き直してください(手動入力は使えます)",true); });
 
 async function startCam(){
   stopCam();
+  const my=++loopId;
   try{
-    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:1280},height:{ideal:960}},audio:false});
+    const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:1600},height:{ideal:1200},frameRate:{ideal:30}},audio:false});
+    if(my!==loopId){ st.getTracks().forEach(t=>t.stop()); return; }
+    stream=st;
     video.srcObject=stream; await video.play();
     video.classList.toggle("mirror",facing==="user");
+    try{
+      const tr=stream.getVideoTracks()[0], caps=tr.getCapabilities?tr.getCapabilities():{};
+      if(caps.focusMode && caps.focusMode.includes("continuous")) await tr.applyConstraints({advanced:[{focusMode:"continuous"}]});
+    }catch(e){}
     say("QRコードをカメラにかざしてください");
-    requestAnimationFrame(tick);
+    scanLoop(my);
   }catch(e){
     say("カメラを起動できません。Safariの設定でカメラを許可し、HTTPSで開いてください。",true);
   }
 }
-function stopCam(){ if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } }
-function tick(){
-  if(!stream) return;
-  if(video.readyState===video.HAVE_ENOUGH_DATA && view==="scan" && !$("overlay").classList.contains("show")){
-    const w=video.videoWidth,h=video.videoHeight;
-    canvas.width=w; canvas.height=h;
-    ctx.drawImage(video,0,0,w,h);
-    const code=jsQR(ctx.getImageData(0,0,w,h).data,w,h,{inversionAttempts:"dontInvert"});
-    if(code && code.data){
-      const now=Date.now();
-      if(code.data!==last.code || now-last.t>4000){
-        last={code:code.data,t:now};
-        handleTag(code.data);
+function stopCam(){ loopId++; if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } }
+
+/* 画面から切り出して読み取る(中央を原寸で → 全体を縮小 → 全体を大きめ の順) */
+function grab(sx,sy,sw,sh,maxDim){
+  const k=Math.min(1,maxDim/Math.max(sw,sh)), dw=Math.max(1,Math.round(sw*k)), dh=Math.max(1,Math.round(sh*k));
+  small.width=dw; small.height=dh; sctx.drawImage(video,sx,sy,sw,sh,0,0,dw,dh);
+  return sctx.getImageData(0,0,dw,dh);
+}
+let step=0, lastRun=0;
+function decodeOnce(){
+  const w=video.videoWidth,h=video.videoHeight;
+  const mode=step++%4;
+  let img;
+  if(mode===0||mode===2){ const cw=Math.round(w*.72), ch=Math.round(h*.72); img=grab(Math.round((w-cw)/2),Math.round((h-ch)/2),cw,ch,960); }
+  else if(mode===1){ img=grab(0,0,w,h,720); }
+  else { img=grab(0,0,w,h,1280); }
+  return jsQR(img.data,img.width,img.height,{inversionAttempts:"dontInvert"});
+}
+function flash(cls){ const f=document.querySelector(".frame"); f.classList.add(cls); setTimeout(()=>f.classList.remove(cls),600); }
+
+function scanLoop(my){
+  if(my!==loopId || !stream) return;
+  const now=performance.now();
+  try{
+    if(typeof jsQR!=="undefined" && now-lastRun>55 && video.readyState>=2 && video.videoWidth
+       && view==="scan" && !$("overlay").classList.contains("show") && !$("cfOverlay").classList.contains("show")){
+      lastRun=now;
+      const code=decodeOnce();
+      if(code && code.data){
+        const t=Date.now();
+        const fresh = code.data!==seen.code || t-seen.at>2500;   /* 同じカードが映り続けている間は1回だけ */
+        seen.code=code.data; seen.at=t;
+        if(fresh){
+          flash(/^SAUNA-(?:TAG-)?\d+$/.test(code.data.trim())?"ok":"ng");
+          handleTag(code.data,true);
+        }
       }
     }
-  }
-  requestAnimationFrame(tick);
+  }catch(e){}
+  requestAnimationFrame(()=>scanLoop(my));
 }
 $("flip").onclick=()=>{ facing=facing==="user"?"environment":"user"; startCam(); };
 $("restart").onclick=startCam;
@@ -406,15 +533,21 @@ function renderStats(){
 
   const rec=history.map((r,i)=>[r,i]).sort((x,y)=>y[0].end-x[0].end).slice(0,20);
   $("recent").innerHTML= rec.length ? "<table><tr><th>退店</th><th>タグ</th><th>メニュー</th><th class='num'>利用</th><th class='num'>料金</th><th></th></tr>"+
-    rec.map(([r,i])=>`<tr><td>${fmtDT(r.end)}</td><td>${r.id}</td><td>${MODE_LABEL[r.mode]}</td><td class="num">${fmtMin(r.min)}</td><td class="num">${yen(r.fee)}</td><td><button class="mini danger" onclick="delRec(${i})">削除</button></td></tr>`).join("")+"</table>"
+    rec.map(([r,i])=>`<tr><td>${fmtDT(r.end)}</td><td>${r.id}</td><td>${MODE_LABEL[r.mode]}</td><td class="num">${fmtMin(r.min)}</td><td class="num">${yen(r.fee)}</td><td><button class="mini danger tap" data-del="${i}">削除</button></td></tr>`).join("")+"</table>"
     : '<div class="empty">会計データがありません</div>';
 }
-function delRec(i){
+async function delRec(i){
   const r=history[i]; if(!r) return;
-  if(confirm(`${fmtDT(r.end)} タグ${r.id}番 ${yen(r.fee)} の記録を削除しますか?`)){ history.splice(i,1); saveH(); renderStats(); }
+  const ok=await askConfirm(`${fmtDT(r.end)} タグ${r.id}番 ${yen(r.fee)} の記録を削除しますか?`,"削除する");
+  if(ok){ history.splice(i,1); saveH(); renderStats(); }
 }
-$("wipe").onclick=()=>{
-  if(confirm("全ての会計履歴を削除します。元に戻せません。よろしいですか?") && confirm("本当に削除しますか?")){ history=[]; saveH(); renderStats(); }
+$("recent").addEventListener("click",e=>{
+  const b=e.target.closest&&e.target.closest("[data-del]");
+  if(b) delRec(Number(b.dataset.del));
+});
+$("wipe").onclick=async()=>{
+  if(await askConfirm("全ての会計履歴を削除します。元に戻せません。よろしいですか?","削除する") &&
+     await askConfirm("本当に全て削除しますか?","全て削除")){ history=[]; saveH(); renderStats(); }
 };
 
 /* CSV出力(表示中の期間) */
@@ -429,6 +562,14 @@ $("csvBtn").onclick=()=>{
   a.download="sauna_"+ymd(new Date()).replace(/-/g,"")+".csv";
   document.body.appendChild(a); a.click(); a.remove();
 };
+
+/* 現在時刻(デジタル) */
+function tickClock(){
+  const d=new Date(), p=n=>String(n).padStart(2,"0");
+  $("clkTime").textContent=`${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  $("clkDate").textContent=`${d.getMonth()+1}/${d.getDate()} ${["SUN","MON","TUE","WED","THU","FRI","SAT"][d.getDay()]}`;
+}
+tickClock(); setInterval(tickClock,1000);
 
 startCam();
 </script>
