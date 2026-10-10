@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-title" content="サウナ受付">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#40E0D0">
+  <link rel="manifest" href="manifest.json">
 <title>サウナ チェックイン</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
 <style>
@@ -573,5 +574,6 @@ tickClock(); setInterval(tickClock,1000);
 
 startCam();
 </script>
+<script>if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');</script>
 </body>
 </html>
