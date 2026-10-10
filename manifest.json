@@ -1,0 +1,8 @@
+{
+  "name": "チェックイン",
+  "short_name": "チェックイン",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#40e0d0",
+  "theme_color": "#40e0d0"
+}
