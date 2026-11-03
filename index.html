@@ -575,5 +575,20 @@ tickClock(); setInterval(tickClock,1000);
 startCam();
 </script>
 <script>if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');</script>
+<script>
+(function(){
+  function fit(){
+    var w=document.querySelector('.wrap');
+    if(!w)return;
+    w.style.zoom=1;
+    var h=w.scrollHeight,H=window.innerHeight;
+    if(h>H){w.style.zoom=Math.max(0.5,(H/h)*0.97);}
+  }
+  window.addEventListener('load',fit);
+  window.addEventListener('resize',fit);
+  window.addEventListener('orientationchange',fit);
+  setInterval(fit,1000);
+})();
+</script>
 </body>
 </html>
