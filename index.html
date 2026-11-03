@@ -12,6 +12,11 @@
 <title>サウナ チェックイン</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
 <style>
+  html,body{height:100%;overflow:hidden !important}
+video,canvas{max-height:36vh !important;width:100% !important;object-fit:cover !important}
+@media (orientation:landscape){
+  body{zoom:.8}
+}
   :root{
     --bg:#40E0D0;          /* ターコイズブルー(全体背景) */
     --bg-deep:#1fb8a8;
